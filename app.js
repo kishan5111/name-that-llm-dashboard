@@ -3,6 +3,7 @@ import DOMPurify from './vendor/purify.js';
 import {metricChart,submissionCharts,foldScores,runTelemetry,formatDuration,trainingLogLines} from './charts.js';
 import {createResponseReader} from './reader.js';
 import {createFeatures} from './features.js';
+import {tokenFromEnv} from './env.js';
 const $=s=>document.querySelector(s);
 const state={token:sessionStorage.getItem('research.token')||'',api:sessionStorage.getItem('research.api')||'',viewer:null,catalog:null,runs:[],tasks:[],agents:[],details:new Map(),lastSync:null,poll:null,loading:false};
 const labels={overview:'Overview',experiments:'Experiments',runs:'Live runs',submissions:'CV & leaderboard',board:'Ideas & to-do',reader:'Response Reader',data:'Data',agents:'Agents',docs:'Documents'};
@@ -100,6 +101,21 @@ let readerView=null;
 let renderSequence=0;
 async function render(){if(!state.catalog)return;const sequence=++renderSequence,{section,id}=routeParts();$('#page-error').classList.add('hidden');$('#breadcrumb').textContent='WORKSPACE / '+labels[section].toUpperCase();document.querySelectorAll('nav>a').forEach(a=>a.classList.toggle('active',a.dataset.section===section));buildFolders();let page;try{if(section==='overview')page=overview();else if(section==='experiments')page=id?await experimentDetail(id):experimentList();else if(section==='runs')page=id?await runDetail(id):runsList();else if(section==='submissions')page=id?submissionDetail(id):submissions();else if(section==='board')page=id?await features.ideaPage(id):await features.ideaBoard();else if(section==='data')page=await features.dataPage();else if(section==='reader'){readerView??=createResponseReader({api});page=readerView.root;await readerView.open(id);}else if(section==='agents')page=agents();else page=id?await documentDetail(id):documents();if(sequence!==renderSequence)return;$('#view').replaceChildren(page);document.title=labels[section]+' · Name That LLM';$('#footer-state').textContent=state.catalog.project?.research_paused?'Research execution paused':'Private research workspace';}catch(e){$('#page-error').textContent=e.message;$('#page-error').classList.remove('hidden');}}
 $('#login-form').onsubmit=async event=>{event.preventDefault();$('#connect-button').disabled=true;$('#login-error').textContent='';try{await connect($('#api-url').value,$('#access-token').value);}catch(e){showLogin(e.message);}finally{$('#connect-button').disabled=false;}};
+$('#env-access').onclick=async()=>{
+ if(!['localhost','127.0.0.1'].includes(location.hostname)){$('#env-file').click();return;}
+ $('#env-access').disabled=true;$('#login-error').textContent='';
+ try{
+  const response=await fetch('/__env_session',{cache:'no-store'});
+  if(!response.ok)throw Error('Local .env is unavailable or missing HUB_TOKEN. Add your personal viewer token to the repository .env.');
+  const data=await response.json();await connect(data.api||$('#api-url').value,data.token);
+ }catch(e){showLogin(e.message);}finally{$('#env-access').disabled=false;}
+};
+$('#env-file').onchange=async event=>{
+ const file=event.target.files[0];if(!file)return;
+ $('#env-access').disabled=true;$('#login-error').textContent='';
+ try{await connect($('#api-url').value,tokenFromEnv(await file.text()));}
+ catch(e){showLogin(e.message);}finally{event.target.value='';$('#env-access').disabled=false;}
+};
 $('#signout').onclick=signout;$('#refresh').onclick=()=>refresh(true).catch(()=>{});window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
 const deployedAPI=document.querySelector('meta[name=research-api]')?.content||'';
 if(!location.hash)history.replaceState(null,'','#/overview');$('#api-url').value=state.api||deployedAPI||(['localhost','127.0.0.1'].includes(location.hostname)?'http://127.0.0.1:8787':'');
