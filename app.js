@@ -1,9 +1,9 @@
-import {marked} from './vendor/marked.js?v=a94eb4660c9704d8';
-import DOMPurify from './vendor/purify.js?v=a94eb4660c9704d8';
-import {metricChart,submissionCharts,foldScores,runTelemetry,formatDuration,trainingLogLines} from './charts.js?v=a94eb4660c9704d8';
-import {createWhiteboards} from './whiteboard.js?v=a94eb4660c9704d8';
-import {createResponseReader} from './reader.js?v=a94eb4660c9704d8';
-import {createFeatures} from './features.js?v=a94eb4660c9704d8';
+import {marked} from './vendor/marked.js?v=b88100a0bfdd1d0b';
+import DOMPurify from './vendor/purify.js?v=b88100a0bfdd1d0b';
+import {metricChart,submissionCharts,foldScores,runTelemetry,formatDuration,trainingLogLines} from './charts.js?v=b88100a0bfdd1d0b';
+import {createWhiteboards} from './whiteboard.js?v=b88100a0bfdd1d0b';
+import {createResponseReader} from './reader.js?v=b88100a0bfdd1d0b';
+import {createFeatures} from './features.js?v=b88100a0bfdd1d0b';
 const $=s=>document.querySelector(s);
 const state={token:sessionStorage.getItem('research.token')||'',api:sessionStorage.getItem('research.api')||'',viewer:null,catalog:null,runs:[],tasks:[],agents:[],details:new Map(),lastSync:null,poll:null,loading:false};
 const labels={overview:'Overview',experiments:'Experiments',runs:'Live runs',submissions:'CV & leaderboard',board:'Ideas & to-do',whiteboards:'Whiteboards',reader:'Response Reader',data:'Data',agents:'Agents',docs:'Documents'};
@@ -85,7 +85,29 @@ function experimentsTable(items){return table(['Date','Experiment','Status'],ite
 function experimentList(){const root=el('div');root.append(heading('Experiments.','Hypotheses, configurations, evidence, and conclusions. The existing studies are preserved as history.'));const controls=el('div',null,'search-row'),search=el('input'),filter=el('select');search.type='search';search.placeholder='Find an experiment…';search.setAttribute('aria-label','Search experiments');for(const [value,label]of [['','All statuses'],['done','Done'],['interrupted','Interrupted'],['running','Running'],['planned','Planned']]){const option=el('option',label);option.value=value;filter.append(option);}controls.append(search,filter);const list=el('div');const update=()=>{const q=search.value.toLowerCase();const rows=[...(state.catalog.experiments||[])].filter(e=>(!filter.value||e.status===filter.value)&&`${e.id} ${e.title} ${e.summary}`.toLowerCase().includes(q)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b.id.localeCompare(a.id));list.replaceChildren(rows.length?experimentsTable(rows):empty('No matching experiments.','Try a different title or status.'));};search.oninput=update;filter.onchange=update;update();root.append(controls,list);return root;}
 function prose(markdown){const root=el('article',null,'prose');root.innerHTML=DOMPurify.sanitize(marked.parse(markdown||'No report has been recorded.'),{ALLOWED_TAGS:['p','h1','h2','h3','h4','h5','h6','pre','code','table','thead','tbody','tr','th','td','blockquote','ul','ol','li','a','em','strong','hr','br','del','details','summary'],ALLOWED_ATTR:['href','title','class']});for(const a of root.querySelectorAll('a')){const href=a.getAttribute('href')||'';if(/^https?:/.test(href)){a.target='_blank';a.rel='noopener noreferrer';}else if(href.startsWith('#')){}else {a.removeAttribute('href');a.title='Private source reference: '+href;}}return root;}
 async function detail(kind,id){const key=kind+'/'+id;if(!state.details.has(key))state.details.set(key,await api('/v1/'+kind+'/'+encodeURIComponent(id)));return state.details.get(key);}
-async function experimentDetail(id){const e=await detail('experiments',id);const root=el('div');root.append(link('← Experiments','#/experiments','back-link'),heading(e.title,e.summary,date(e.date)));const runs=state.runs.filter(r=>r.experiment_id===id);if(runs.length){const s=section('Reported runs','Each attempt keeps its own provenance');s.append(runsTable(runs));root.append(s);const active=runs.find(r=>!terminal.has(r.status)&&r.status!=='queued')||runs.find(r=>r.status!=='queued');if(active){const live=await api('/v1/runs/'+encodeURIComponent(active.id));root.append(experimentRunMetrics(live),trainingOutput(live));}}if(e.plan){const meta=el('dl',null,'meta-grid');for(const key of ['model','max_length','micro_batch_size','learning_rate','epochs','training_budget_seconds']){if(e.plan[key]!==undefined){const cell=el('div');cell.append(el('dt',key.replaceAll('_',' ')),el('dd',String(e.plan[key])));meta.append(cell);}}if(meta.children.length)root.append(meta);}root.append(prose(e.report));return root;}
+async function experimentDetail(id){
+ const e=await api('/v1/experiments/'+encodeURIComponent(id)),root=el('div');
+ root.append(link('← Experiments','#/experiments','back-link'),heading(e.title,e.summary,date(e.date)));
+ if(e.report)root.append(prose(e.report));
+ const runs=state.runs.filter(r=>r.experiment_id===id);
+ if(runs.length){
+  const list=section('Reported runs','Each stage keeps its own results and provenance');list.append(runsTable(runs));root.append(list);
+  const records=await Promise.all(runs.slice(0,8).map(r=>api('/v1/runs/'+encodeURIComponent(r.id))));
+  records.sort((a,b)=>Number(runTelemetry(b).validation.length>0)-Number(runTelemetry(a).validation.length>0));
+  for(const run of records){
+   const telemetry=runTelemetry(run),sanity=telemetry.history.filter(p=>p.scope==='training_sanity');
+   if(telemetry.training.length||telemetry.validation.length){root.append(experimentRunMetrics(run));const logs=el('details');logs.append(el('summary',run.title+' · training log'),trainingOutput(run));root.append(logs);}
+   else{const stage=section(run.title,`${run.status} · ${(run.phase||'').replaceAll('_',' ')}`);stage.append(link('Open stage details →',`#/runs/${run.id}`));
+    if(sanity.length){stage.append(notice('Training-only sanity check. These are not held-out validation scores; full training did not follow this gate.'));const charts=el('div',null,'charts');charts.append(metricChart('Sanity-check binary balanced accuracy',sanity,'balanced_accuracy'),metricChart('Sanity-check loss',sanity,'loss',{percent:false}));stage.append(charts,table(['Sanity update','Binary balanced accuracy','Candidate group top1','Loss'],sanity.map(p=>[integer(p.step),pct(p.balanced_accuracy),pct(p.group_top1),p.loss.toFixed(4)]),[0,1,2,3]));}
+    else stage.append(el('p','This stage has no training or validation measurements. See its recorded outcome and notes.','muted'));
+    const notes=el('div',null,'log-lines');notes.textContent=(run.logs||[]).slice(-8).map(x=>x.message).join('\n');stage.append(notes);root.append(stage);
+   }
+  }
+ }
+ if(!e.report&&!runs.length)root.append(empty('No results have been recorded for this experiment.','The experiment exists, but no report or linked runs are available.'));
+ if(e.plan){const meta=el('dl',null,'meta-grid');for(const key of ['model','max_length','micro_batch_size','learning_rate','epochs','training_budget_seconds'])if(e.plan[key]!==undefined){const cell=el('div');cell.append(el('dt',key.replaceAll('_',' ')),el('dd',String(e.plan[key])));meta.append(cell);}if(meta.children.length)root.append(meta);}
+ return root;
+}
 function runsTable(runs){return table(['Run','Compute','Progress','State','Reported'],runs.map(r=>[descriptionCell(r.title,r.experiment_id,`#/runs/${r.id}`),`${r.provider} / ${r.device}`,`${integer(r.step)} / ${integer(r.total_steps)}`,status(!terminal.has(r.status)&&age(r.updated_at)>120?'telemetry_stale':r.status),since(r.updated_at)]));}
 function runsList(){const root=el('div');root.append(heading('Live runs.','Workers report training, validation, transfers, and verified recovery points.'));root.append(state.runs.length?runsTable(state.runs):empty('No reported runs.','Connect a training script using the reporting helper. Nothing is launched by opening this page.'));return root;}
 function experimentRunMetrics(run){
