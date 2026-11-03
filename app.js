@@ -30,13 +30,18 @@ async function api(path,options={}){
  const data=await response.json();if(state.token!==requestToken)throw Error('Session changed.');if(!response.ok){const error=Error(data.error||`Request failed (${response.status})`);error.status=response.status;throw error;}return data;
 }
 function showLogin(error=''){$('#workspace').classList.add('hidden');$('#login').classList.remove('hidden');$('#login-error').textContent=error;}
-function signout(){renderSequence++;readerView=null;for(const key of Object.keys(sessionStorage))if(key.startsWith('research.draft.'))sessionStorage.removeItem(key);if(state.poll)clearInterval(state.poll);state.token='';state.viewer=null;state.catalog=null;state.runs=[];state.tasks=[];state.agents=[];state.details.clear();sessionStorage.removeItem('research.token');$('#view').replaceChildren();$('#experiment-children').replaceChildren();$('#document-children').replaceChildren();showLogin();}
+function signout(){renderSequence++;readerView=null;for(const key of Object.keys(sessionStorage))if(key.startsWith('research.draft.'))sessionStorage.removeItem(key);if(state.poll)clearInterval(state.poll);state.token='';state.viewer=null;state.catalog=null;state.runs=[];state.tasks=[];state.agents=[];state.details.clear();sessionStorage.removeItem('research.token');$('#team-meet').classList.add('hidden');$('#team-meet').removeAttribute('href');$('#view').replaceChildren();$('#experiment-children').replaceChildren();$('#document-children').replaceChildren();showLogin();}
 function normalizedAPI(value){const u=new URL(value);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw Error('Use an HTTPS API address.');if(u.username||u.password||u.search||u.hash)throw Error('API address must not contain credentials or query parameters.');return u.origin+u.pathname.replace(/\/$/,'');}
 async function connect(apiURL,token){
  state.api=normalizedAPI(apiURL);state.token=token.trim();if(!state.token)throw Error('Enter your access token.');
  state.viewer=await api('/v1/session');sessionStorage.setItem('research.api',state.api);sessionStorage.setItem('research.token',state.token);
  await refresh(true);$('#login').classList.add('hidden');$('#workspace').classList.remove('hidden');$('#access-token').value='';$('#viewer-name').textContent=state.viewer.name+' / '+state.viewer.role;
  if(state.poll)clearInterval(state.poll);state.poll=setInterval(()=>{if(!document.hidden)refresh().catch(()=>{});},30000);
+}
+async function updateMeetingLink(catalog){
+ const anchor=$('#team-meet');anchor.classList.add('hidden');anchor.removeAttribute('href');
+ if(!catalog.documents?.some(d=>d.id==='team-google-meet'))return;
+ try{const doc=await detail('documents','team-google-meet');const match=doc.markdown?.match(/https:\/\/meet\.google\.com\/[^\s)<>]+/);if(!match)return;const url=new URL(match[0]);if(url.protocol!=='https:'||url.hostname!=='meet.google.com')return;anchor.href=url.href;anchor.classList.remove('hidden');}catch{/* Meeting shortcut must not block live telemetry. */}
 }
 async function allItems(path){
  const items=[],seen=new Set();let cursor=null;
@@ -47,7 +52,7 @@ async function refresh(initial=false){
  if(state.loading)return;state.loading=true;
  try{
   const [catalog,runs,tasks,agents]=await Promise.all([api('/v1/catalog'),allItems('/v1/runs'),allItems('/v1/tasks'),allItems('/v1/agents')]);
-  state.catalog=catalog;state.runs=runs.items.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));state.tasks=tasks.items;state.agents=agents.items;state.lastSync=new Date().toISOString();
+  state.catalog=catalog;await updateMeetingLink(catalog);state.runs=runs.items.sort((a,b)=>b.updated_at.localeCompare(a.updated_at));state.tasks=tasks.items;state.agents=agents.items;state.lastSync=new Date().toISOString();
   $('#connection-state').textContent='Connected';$('#connection-dot').classList.add('online');$('#connection-warning').classList.add('hidden');$('#sync-time').textContent='Synced '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'})+' IST';
   buildFolders();const current=routeParts();if(initial||['overview','runs','agents','experiments'].includes(current.section)||(current.section==='board'&&!current.id))await render();
  }catch(e){$('#connection-state').textContent='Update unavailable';$('#connection-dot').classList.remove('online');$('#connection-warning').textContent='Updates are unavailable. Showing the last received records; this does not establish whether a training process stopped.';$('#connection-warning').classList.remove('hidden');if(initial)throw e;}
