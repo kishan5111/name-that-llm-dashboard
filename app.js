@@ -1,9 +1,9 @@
-import {marked} from './vendor/marked.js';
-import DOMPurify from './vendor/purify.js';
-import {metricChart,submissionCharts,foldScores,runTelemetry,formatDuration,trainingLogLines} from './charts.js';
-import {createWhiteboards} from './whiteboard.js';
-import {createResponseReader} from './reader.js';
-import {createFeatures} from './features.js';
+import {marked} from './vendor/marked.js?v=a94eb4660c9704d8';
+import DOMPurify from './vendor/purify.js?v=a94eb4660c9704d8';
+import {metricChart,submissionCharts,foldScores,runTelemetry,formatDuration,trainingLogLines} from './charts.js?v=a94eb4660c9704d8';
+import {createWhiteboards} from './whiteboard.js?v=a94eb4660c9704d8';
+import {createResponseReader} from './reader.js?v=a94eb4660c9704d8';
+import {createFeatures} from './features.js?v=a94eb4660c9704d8';
 const $=s=>document.querySelector(s);
 const state={token:sessionStorage.getItem('research.token')||'',api:sessionStorage.getItem('research.api')||'',viewer:null,catalog:null,runs:[],tasks:[],agents:[],details:new Map(),lastSync:null,poll:null,loading:false};
 const labels={overview:'Overview',experiments:'Experiments',runs:'Live runs',submissions:'CV & leaderboard',board:'Ideas & to-do',whiteboards:'Whiteboards',reader:'Response Reader',data:'Data',agents:'Agents',docs:'Documents'};
