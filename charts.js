@@ -80,8 +80,8 @@ export function runTelemetry(run){
   recall5:Number.isFinite(p.recall5)?p.recall5:p.recall_at_5
  }));
  const training=history.filter(p=>['training','official_training'].includes(p.scope));
- const validation=history.filter(p=>['source_validation','public_source_validation','external_validation','protected_validation'].includes(p.scope));
- const validationScope=validation.some(p=>p.scope==='source_validation')?'source_validation':validation.some(p=>p.scope==='public_source_validation')?'public_source_validation':'external_validation';
+ const validation=history.filter(p=>['source_validation','public_source_validation','public_validation','external_validation','protected_validation'].includes(p.scope));
+ const validationScope=validation.some(p=>p.scope==='source_validation')?'source_validation':validation.some(p=>p.scope==='public_source_validation')?'public_source_validation':validation.some(p=>p.scope==='public_validation')?'public_validation':'external_validation';
  return {history,training,validation,validationScope,latestTraining:training.at(-1)||null};
 }
 export function formatDuration(seconds){
@@ -94,7 +94,7 @@ export function formatDuration(seconds){
 }
 
 export function trainingLogLines(run){
- return runTelemetry(run).history.filter(p=>['training','official_training','public_source_validation','source_validation'].includes(p.scope)).slice(-40).map(p=>{
+ return runTelemetry(run).history.filter(p=>['training','official_training','public_source_validation','public_validation','source_validation'].includes(p.scope)).slice(-40).map(p=>{
   const values=[p.timestamp||'',`step ${p.step}`,p.scope.replaceAll('_',' ')];
   for(const [key,label,digits]of [['loss','loss',4],['balanced_accuracy','balanced acc',4],['recall3','recall@3',4],['recall5','recall@5',4],['seconds_per_update','s/update',2]])if(Number.isFinite(p[key]))values.push(`${label}=${p[key].toFixed(digits)}`);
   if(Number.isFinite(p.eta_seconds))values.push(`ETA ${formatDuration(p.eta_seconds)}`);
